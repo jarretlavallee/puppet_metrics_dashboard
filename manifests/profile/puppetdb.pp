@@ -19,10 +19,17 @@
 # @param enable_client_cert
 #   A boolean to enable using the client certificate for the PuppetDB queries. Defaults to true
 #
+# @param influxdb_host
+#   The hostname of the InfluxDB server to send metrics to. Only used if running telegraf remotely. Defaults to `undef`
+#
+# @param influxdb_database
+#   The name of the database to use in InfluxDB. Defaults to the hiera value of `'puppet_metrics_dashboard::telegraf_db_name`
+#
 # @example Add telegraf to a puppetdb node
 #   puppet_metrics_dashboard::profile::puppetdb{ $facts['networking']['fqdn']:
 #     timeout          => '5s',
 #     puppetdb_metrics => puppet_metrics_dashboard::puppetdb_metrics(), # this is the default value
+#     influxdb_host    => 'dashboard.example.com', # the node that is classified with the `puppet_metrics_dashboard` class.
 #   }
 #
 define puppet_metrics_dashboard::profile::puppetdb (
@@ -32,7 +39,27 @@ define puppet_metrics_dashboard::profile::puppetdb (
   Integer[1] $port                                            = 8081,
   String[2] $interval                                         = '5s',
   Boolean $enable_client_cert                                 = true,
+  Optional[String[1]] $influxdb_host                          = undef,
+  String[1] $influxdb_database                                = lookup('puppet_metrics_dashboard::telegraf_db_name'),
   ){
+
+  if $influxdb_host {
+
+    class { 'telegraf':
+      hostname => $trusted['certname'],
+      interval => '5s',
+      logfile  => '/var/log/telegraf/telegraf.log',
+      outputs  => {
+        'influxdb' => [{
+            'urls'              => ["http://${influxdb_host}:8086"],
+            'database'          => $influxdb_database,
+            'write_consistency' => 'any',
+            'timeout'           => '5s',
+          }],
+      },
+    }
+
+  }
 
   ensure_resource( 'puppet_metrics_dashboard::certs', 'telegraf', {
       notify  => Service['telegraf'],
